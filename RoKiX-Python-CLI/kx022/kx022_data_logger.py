@@ -236,7 +236,7 @@ def app_main(odr=25):
         odr = args.odr
 
     sensor = KX022Driver()
-    connection_manager = ConnectionManager(odr=odr)
+    connection_manager = ConnectionManager(odr=odr, req_port=1)
     connection_manager.add_sensor(sensor)
     enable_data_logging(sensor, odr=odr)
 

@@ -28,7 +28,7 @@ class ConnectionManager(object):
             board_config_json(string): File name of board configoration json file
         """
 
-    def __init__(self, board_config_json=None, odr=None):
+    def __init__(self, board_config_json=None, odr=None, req_port=None):
         LOGGER.debug('>init')
 
         if board_config_json is None:
@@ -93,7 +93,13 @@ class ConnectionManager(object):
                 # com port defined in rokix_settings.cfg
                 found_ports = [serial_port]
 
+            if req_port != None:
+                found_ports = [ found_ports[req_port] ]
+
+            print found_ports
+            print len( found_ports )
             for com_port in found_ports:
+                print com_port
                 LOGGER.debug("Finding board from %s" % com_port)
                 bus2connection.initialize(com_port)
                 self.kx_adapter = KxAdapterEvk(bus2=bus2connection)
@@ -103,8 +109,10 @@ class ConnectionManager(object):
                     LOGGER.debug('Board id %s received. Expected id is %s.' % (
                         self.kx_adapter.board_id, self.__board_config[CFG_CONFIGURATION]['board_id']))
                 else:
-                    break
+                    print 'vader'
+                    continue
 
+            print 'here'
             if self.kx_adapter.board_id != self.__board_config[CFG_CONFIGURATION]['board_id']:
                 raise EvaluationKitException('Expected evaluation board not found.')
 
