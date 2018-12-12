@@ -30,6 +30,68 @@ from kx_lib.kx_configuration_enum import CH_ACC, POLARITY_DICT, CFG_POLARITY, CF
 from kx_lib.kx_board import ConnectionManager
 from kx_lib.kx_data_logger import SensorDataLogger
 from kx022.kx022_driver import KX022Driver, r, b, m, e, r122, b122, m122, e122
+import matplotlib.pyplot as plt
+import numpy as np
+from mpl_toolkits.mplot3d import Axes3D
+import math
+import time
+
+
+acc0 = [0, 0, 0]
+acc1 = [0, 0, 0]
+
+
+G1_M = 16000
+BOUND = 10
+VAR = 5
+
+class ShapePlot:
+
+	def __init__(self):
+		self.plt3d = plt.figure().gca(projection='3d')
+		print (self.plt3d)
+
+		plt.show(block=False)
+
+	def plot(self,vecs,points):
+		if len(vecs) != len(points):
+			print('error - plot_surfaces - points and vecs not equal length')
+			return
+		zs = []
+
+		# create x,y
+		xx, yy = np.meshgrid(range(-1*BOUND,BOUND), range(-1*BOUND,BOUND))
+
+		for i in range(len(vecs)):
+			vec = vecs[i]
+			center_point = points[i]
+
+			vec = normalize(vec)
+			point  = np.array(center_point)
+			normal = np.array(vec)
+
+			d = -point.dot(normal)
+
+			# gaussian distribution
+			g = 2 / (math.pi*(VAR**2)) * \
+			np.exp(-1.0*((xx-point[0])**2)/(2*(VAR**2))\
+			+ -1.0*((yy-point[1])**2)/(2*(VAR**2))\
+			)
+
+			# calculate corresponding z
+			if normal[2] == 0: normal[2] = 1e-17
+			zi = (-normal[0] * xx - normal[1] * yy - d) * 1. / normal[2]
+
+
+			zs += [np.multiply(g, zi)]
+
+		z = (1.0*sum(zs))/len(zs)
+		# plot the surface
+		self.plt3d.cla()
+		self.plt3d.set_zlim3d(-1,1)
+		self.plt3d.plot_surface(xx, yy, z)
+		plt.draw()
+		plt.pause(1e-17)
 
 _CODE_FORMAT_VERSION = 3.0
 
@@ -200,7 +262,7 @@ def enable_data_logging(sensor,
     LOGGER.info('enable_data_logging done')
 
 
-def read_with_polling(sensor, loop):
+def read_with_polling(sensor, loop, sensor_id):
     count = 0
     dl = SensorDataLogger()
     dl.add_channel('ch!ax!ay!az')
@@ -212,6 +274,11 @@ def read_with_polling(sensor, loop):
             sensor.drdy_function()
             ax, ay, az = sensor.read_data()
             dl.feed_values((10, ax, ay, az))
+            global acc0, acc1
+            if sensor_id == 0:
+                acc0 = [ax, ay, az]
+            else:
+                acc1 = [ax, ay, az]
 
     except KeyboardInterrupt:
         dl.stop()
@@ -228,30 +295,74 @@ def read_with_stream(sensor, loop, timer=None, pin_index=None):
     stream.read_data_stream(loop)
     return stream
 
+def normalize(vec):
+    vec = [(x*1.0) / G1_M for x in vec]
+    return vec
+
 
 def app_main(odr=25):
+    sp = ShapePlot()
+    v1 = acc0
+    p2 = [8, 0, 0]
+    v2 = acc1
+    p1 = [-8, 0, 0]
+    points = [p1, p2]
+	# for i in range(40):
+	# 	print(v1)
+	# 	# v1[0] = v1[0] + 500
+	# 	# v1[2] = v1[2] - 500
+	# 	vecs = [v1,v2]
+	# 	points = [p1,p2]
+	# 	sp.plot(vecs,points)
+	# 	time.sleep(.1)
 
     args = get_datalogger_args()
+
+
     if args.odr:
         odr = args.odr
 
-    sensor = KX022Driver()
-    connection_manager = ConnectionManager(odr=odr, req_port=1)
-    connection_manager.add_sensor(sensor)
-    enable_data_logging(sensor, odr=odr)
+    sensor0 = KX022Driver()
+    sensor1 = KX022Driver()
 
-    if args.stream_mode:
-        read_with_stream(sensor, args.loop)
+    connection_manager0 = ConnectionManager(odr=odr, req_port=0)
+    connection_manager1 = ConnectionManager(odr=odr, req_port=1)
 
-    elif args.timer_stream_mode:
-        read_with_stream(sensor, loop=args.loop, timer=1./odr)
+    connection_manager0.add_sensor(sensor0)
+    connection_manager1.add_sensor(sensor1)
 
-    else:
-        read_with_polling(sensor, args.loop)
+    enable_data_logging(sensor0, odr=odr)
+    enable_data_logging(sensor1, odr=odr)
 
-    sensor.set_power_off()
-    connection_manager.disconnect()
+    while True:
 
+        if args.stream_mode:
+            read_with_stream(sensor, args.loop)
+
+            print 'here11'
+        elif args.timer_stream_mode:
+            read_with_stream(sensor, loop=args.loop, timer=1./odr)
+
+            print 'here12'
+        else:
+            # read_with_polling(sensor, args.loop)
+            read_with_polling(sensor0, 1, 0)
+            read_with_polling(sensor1, 1, 1)
+            print 'here13'
+
+        v1 = acc0
+        v2 = acc1
+        sp.plot([v1, v2], points)
+        # time.sleep(0.01)
+    print 'here'
+
+    sensor0.set_power_off()
+    sensor1.set_power_off()
+
+    connection_manager0.disconnect()
+    connection_manager1.disconnect()
+
+    print 'here1'
 
 if __name__ == '__main__':
     # TODO 1 packet counter, fw time stamps
